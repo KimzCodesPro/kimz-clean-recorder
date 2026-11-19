@@ -1,0 +1,5 @@
+dfn/target/
+Vendor/libdfn.a
+*.xcodeproj/
+DerivedData/
+.DS_Store

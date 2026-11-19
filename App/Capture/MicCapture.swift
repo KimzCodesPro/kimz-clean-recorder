@@ -1,0 +1,125 @@
+import AVFoundation
+
+struct MicInfo: Identifiable, Hashable {
+    let id: String      // AVCaptureDevice.uniqueID
+    let name: String
+}
+
+/// Captures the selected microphone as mono 48 kHz Float32.
+/// The mic can be switched while running; samples keep flowing with host-clock timestamps.
+final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
+    static let sampleRate: Double = 48_000
+
+    /// Called on `audioQueue` with each chunk and its start time on the host clock.
+    var onSamples: (@Sendable (UnsafeBufferPointer<Float>, CMTime) -> Void)?
+    /// Called on the main queue when a mic is plugged in or removed.
+    var onDevicesChanged: (() -> Void)?
+
+    let audioQueue = DispatchQueue(label: "clean-recorder.mic.audio", qos: .userInteractive)
+
+    private let session = AVCaptureSession()
+    private let output = AVCaptureAudioDataOutput()
+    private let sessionQueue = DispatchQueue(label: "clean-recorder.mic.session")
+    private var input: AVCaptureDeviceInput?
+    private var observers: [NSObjectProtocol] = []
+    private let hostClock = CMClockGetHostTimeClock()
+
+    static func availableMics() -> [MicInfo] {
+        AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone, .external],
+            mediaType: .audio,
+            position: .unspecified
+        ).devices.map { MicInfo(id: $0.uniqueID, name: $0.localizedName) }
+    }
+
+    static func defaultMicID() -> String? {
+        AVCaptureDevice.default(for: .audio)?.uniqueID
+    }
+
+    override init() {
+        super.init()
+        output.audioSettings = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: Self.sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsNonInterleaved: false,
+            AVLinearPCMIsBigEndianKey: false,
+        ]
+        output.setSampleBufferDelegate(self, queue: audioQueue)
+
+        let nc = NotificationCenter.default
+        for name in [Notification.Name.AVCaptureDeviceWasConnected, .AVCaptureDeviceWasDisconnected] {
+            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self else { return }
+                if name == .AVCaptureDeviceWasDisconnected,
+                   let dev = note.object as? AVCaptureDevice,
+                   dev.uniqueID == self.currentDeviceID {
+                    // Active mic was unplugged: fall back to the system default.
+                    self.select(deviceID: Self.defaultMicID())
+                }
+                self.onDevicesChanged?()
+            })
+        }
+    }
+
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+
+    private(set) var currentDeviceID: String?
+
+    /// Starts capturing (or switches device if already running). Safe to call anytime.
+    func select(deviceID: String?) {
+        sessionQueue.async { [self] in
+            let id = deviceID ?? Self.defaultMicID()
+            guard let id, id != input?.device.uniqueID,
+                  let device = AVCaptureDevice(uniqueID: id),
+                  let newInput = try? AVCaptureDeviceInput(device: device) else {
+                if !session.isRunning, input != nil { session.startRunning() }
+                return
+            }
+
+            session.beginConfiguration()
+            if let input { session.removeInput(input) }
+            if session.canAddInput(newInput) {
+                session.addInput(newInput)
+                input = newInput
+            } else if let old = input, session.canAddInput(old) {
+                session.addInput(old) // keep the old mic if the new one fails
+            }
+            if session.outputs.isEmpty, session.canAddOutput(output) {
+                session.addOutput(output)
+            }
+            session.commitConfiguration()
+
+            currentDeviceID = input?.device.uniqueID
+            if !session.isRunning { session.startRunning() }
+        }
+    }
+
+    func stop() {
+        sessionQueue.async { [self] in session.stopRunning() }
+    }
+
+    // MARK: - AVCaptureAudioDataOutputSampleBufferDelegate
+
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard let asbd = sampleBuffer.formatDescription?.audioStreamBasicDescription,
+              asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              asbd.mChannelsPerFrame == 1,
+              Int(asbd.mSampleRate) == Int(Self.sampleRate) else { return }
+
+        // Put the timestamp on the same clock ScreenCaptureKit uses.
+        let pts = session.synchronizationClock.map {
+            CMSyncConvertTime(sampleBuffer.presentationTimeStamp, from: $0, to: hostClock)
+        } ?? sampleBuffer.presentationTimeStamp
+
+        try? sampleBuffer.withAudioBufferList { list, _ in
+            guard let buf = list.first, let data = buf.mData else { return }
+            let count = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
+            onSamples?(UnsafeBufferPointer(start: data.assumingMemoryBound(to: Float.self), count: count), pts)
+        }
+    }
+}

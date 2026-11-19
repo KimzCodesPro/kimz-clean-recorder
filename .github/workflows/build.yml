@@ -1,0 +1,49 @@
+name: Build Kimz Clean Recorder
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            dfn/target
+          key: dfn-${{ runner.os }}-${{ hashFiles('dfn/Cargo.lock', 'dfn/src/**') }}
+
+      - name: Build DeepFilterNet (Apple Silicon + Intel)
+        run: ./Scripts/build-dfn.sh --universal
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen
+
+      - name: Build app
+        run: |
+          xcodebuild -project CleanRecorder.xcodeproj -target CleanRecorder \
+            -configuration Release SYMROOT="$PWD/build" \
+            ONLY_ACTIVE_ARCH=NO ARCHS="arm64 x86_64" \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual \
+            -quiet build
+
+      - name: Package DMG
+        run: |
+          APP="build/Release/Kimz Clean Recorder.app"
+          codesign --verify --deep --verbose=2 "$APP"
+          mkdir dmg && cp -R "$APP" dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname "Kimz Clean Recorder" -srcfolder dmg -ov -format UDZO "Kimz-Clean-Recorder.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kimz-Clean-Recorder
+          path: Kimz-Clean-Recorder.dmg
