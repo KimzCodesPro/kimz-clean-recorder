@@ -1,7 +1,7 @@
 import CoreMedia
 
 /// Mic chain:
-/// high-pass → DeepFilterNet → mic gain → pop reducer → room echo → expander
+/// high-pass → DeepFilterNet → voice gate → mic gain → pop reducer → room echo
 /// → EQ → compressor → de-esser → warmth → limiter
 /// Runs on the mic's audio queue. Output timestamps are corrected for DeepFilterNet's delay.
 final class AudioProcessor {
@@ -13,7 +13,7 @@ final class AudioProcessor {
         var gain: Float = 1           // linear, 0...2 (0 % ... 200 %)
         var popReducer = true
         var roomEcho = false
-        var expander = true
+        var voiceGate = true          // AI silence & keyboard cleanup
         var warmth = false
     }
 
@@ -35,7 +35,7 @@ final class AudioProcessor {
     private var highPass = Biquad.highPass(80)
     private var plosive = PlosiveReducer()
     private var roomEcho = RoomEchoReducer()
-    private var expander = Expander()
+    private var gate = VoiceGate()
     private var eq = VoiceEQ(VoicePreset.natural.values)
     private var compressor = Compressor(VoicePreset.natural.values)
     private var deEsser = DeEsser()
@@ -94,11 +94,14 @@ final class AudioProcessor {
         var start = 0
         if let dfn {
             while pending.count - start >= frameLength {
-                pending.withUnsafeBufferPointer { inBuf in
+                let snr = pending.withUnsafeBufferPointer { inBuf in
                     frameOut.withUnsafeMutableBufferPointer { outBuf in
-                        _ = dfn_process(dfn, inBuf.baseAddress! + start, outBuf.baseAddress!)
+                        dfn_process(dfn, inBuf.baseAddress! + start, outBuf.baseAddress!)
                     }
                 }
+                // The gate needs the model's speech estimate, so it only runs with noise cancel on.
+                gate.floor = p.noiseStrength.gateFloor
+                gate.update(snrDB: p.noiseCancel && p.voiceGate ? snr : 100)
                 for y in frameOut { post(y, p) }
                 start += frameLength
             }
@@ -121,10 +124,9 @@ final class AudioProcessor {
 
     @inline(__always) private func post(_ y: Float, _ p: Params) {
         if toDrop > 0 { toDrop -= 1; return }
-        var s = y * p.gain
+        var s = gate.process(y) * p.gain
         if p.popReducer { s = plosive.process(s) }
         if p.roomEcho { s = roomEcho.process(s) }
-        if p.expander { s = expander.process(s) }
         if p.enhance {
             s = eq.process(s)
             s = compressor.process(s)
