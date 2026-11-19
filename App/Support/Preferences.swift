@@ -35,6 +35,7 @@ enum Pref {
     static let warmth = "warmth"
     static let normalize = "normalizeLoudness"
     static let loudnessTarget = "loudnessTarget"
+    static let diagnostics = "saveDiagnostics"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [

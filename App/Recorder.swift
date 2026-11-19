@@ -178,7 +178,8 @@ final class Recorder: ObservableObject {
             let wavURL = d.bool(forKey: Pref.saveWav)
                 ? url.deletingPathExtension().appendingPathExtension("wav") : nil
             let writer = try MovieWriter(url: url, width: w, height: h, fps: fps,
-                                         quality: quality, wavURL: wavURL)
+                                         quality: quality, wavURL: wavURL,
+                                         diagnostics: d.bool(forKey: Pref.diagnostics))
             try writer.start(at: CMClockGetTime(CMClockGetHostTimeClock()))
             self.writer = writer
             processor.sink.set(writer)

@@ -42,6 +42,8 @@ final class MovieWriter {
     private let audioInput: AVAssetWriterInput
     private let audioFormat: CMAudioFormatDescription
     private var wavFile: AVAudioFile?
+    private var rawFile: AVAudioFile?          // diagnostics: unprocessed mic
+    private var snrLog: FileHandle?            // diagnostics: AI speech confidence per 10 ms
     private let wavFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
                                           channels: 1, interleaved: false)!
 
@@ -52,7 +54,8 @@ final class MovieWriter {
     private var finished = false
     private var loudness = LoudnessMeter()
 
-    init(url: URL, width: Int, height: Int, fps: Int, quality: VideoQuality, wavURL: URL?) throws {
+    init(url: URL, width: Int, height: Int, fps: Int, quality: VideoQuality, wavURL: URL?,
+         diagnostics: Bool = false) throws {
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
 
@@ -100,6 +103,37 @@ final class MovieWriter {
         self.audioInput = audioInput
         self.audioFormat = fmt
         self.wavFile = wav
+
+        if diagnostics {
+            let base = url.deletingPathExtension()
+            rawFile = try? AVAudioFile(forWriting: base.appendingPathExtension("raw-mic.wav"),
+                                       settings: wavFormat.settings, commonFormat: .pcmFormatFloat32,
+                                       interleaved: false)
+            let csv = base.appendingPathExtension("speech-confidence.csv")
+            FileManager.default.createFile(atPath: csv.path, contents: Data("seconds,snr_db,gate_db\n".utf8))
+            snrLog = try? FileHandle(forWritingTo: csv)
+            _ = try? snrLog?.seekToEnd()
+        }
+    }
+
+    /// Diagnostics: raw mic samples exactly as they arrived (before any processing).
+    func appendRaw(_ samples: [Float]) {
+        queue.async { [self] in
+            guard !finished, let rawFile, !samples.isEmpty,
+                  let buf = AVAudioPCMBuffer(pcmFormat: wavFormat, frameCapacity: AVAudioFrameCount(samples.count)) else { return }
+            buf.frameLength = AVAudioFrameCount(samples.count)
+            samples.withUnsafeBufferPointer { buf.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
+            try? rawFile.write(from: buf)
+        }
+    }
+
+    /// Diagnostics: one line per 10 ms model frame.
+    func logFrame(snrDB: Float, gateGain: Float) {
+        queue.async { [self] in
+            guard !finished, let snrLog else { return }
+            let t = Double(rawFile?.length ?? 0) / 48_000
+            snrLog.write(Data(String(format: "%.3f,%.1f,%.1f\n", t, snrDB, 20 * log10(max(gateGain, 1e-5))).utf8))
+        }
     }
 
     private static func videoSettings(width: Int, height: Int, fps: Int, rate: [String: Any]) -> [String: Any] {
@@ -211,6 +245,9 @@ final class MovieWriter {
             guard !finished else { return }
             finished = true
             wavFile = nil // closes the .wav
+            rawFile = nil
+            try? snrLog?.close()
+            snrLog = nil
 
             var end = CMTimeMaximum(lastVideoTime, nextAudioTime)
             if let t = fileTime(hostTime) { end = CMTimeMaximum(end, t) }
