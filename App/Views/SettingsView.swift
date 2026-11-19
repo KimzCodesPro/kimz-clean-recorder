@@ -40,7 +40,7 @@ struct SettingsView: View {
                     ForEach(VoicePreset.allCases) { Text($0.label).tag($0) }
                 }
                 Toggle("Pop reducer (p / b sounds)", isOn: $rec.popReducer)
-                Toggle("Silence cleanup (breaths, small noises)", isOn: $rec.expander)
+                Toggle("Silence & keyboard cleanup (AI)", isOn: $rec.expander)
                 Toggle("Room echo reduction", isOn: $rec.roomEcho)
                 Toggle("Warmth", isOn: $rec.warmth)
                 Text("Room echo reduction is light. Best for small echoes. Treating the room works better for big ones.")

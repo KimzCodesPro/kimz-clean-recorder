@@ -10,7 +10,7 @@ Pick a screen, pick a mic, press Record, and you get a small, sharp `.mp4` with 
 - **Mic volume slider** from 0–200%, also adjustable while recording. Double-click the % to reset it to 100%.
 - **Noise cancel** with DeepFilterNet3 (on-device AI, model embedded in the app).
 - **Enhance voice:** EQ, compressor and de-esser, shaped by a **voice style** (Natural, Warm, Bright, Broadcast).
-- **Extra voice tools** (in Settings): pop reducer, silence cleanup (expander), light room echo reduction, warmth.
+- **Extra voice tools** (in Settings): pop reducer, AI silence & keyboard cleanup (voice gate driven by the model's speech detection), light room echo reduction, warmth.
 - **Loudness normalization** after recording, to −14 LUFS (YouTube) or −16 LUFS (podcast). The video is copied untouched.
 - **Hear yourself:** live headphone monitoring of the processed voice.
 - **Limiter** always on, so the audio never clips.
@@ -63,7 +63,8 @@ Mic (AVCaptureSession, 48 kHz mono)
   → high-pass 80 Hz
   → DeepFilterNet3 (Rust)        noise removal, 30 ms delay (compensated)
   → mic gain (0–200 %)
-  → pop reducer → room echo reduction → silence cleanup
+  → voice gate (AI speech detection)
+  → pop reducer → room echo reduction
   → EQ → compressor → de-esser   "Enhance voice" (voice style)
   → warmth → limiter (-1 dBFS)    → headphones (optional)
   ┐

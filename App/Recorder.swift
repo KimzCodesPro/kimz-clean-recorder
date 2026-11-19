@@ -256,7 +256,7 @@ final class Recorder: ObservableObject {
         processor.params.set(AudioProcessor.Params(
             noiseCancel: noiseCancel, noiseStrength: noiseStrength,
             enhance: enhance, preset: preset, gain: Float(micGain),
-            popReducer: popReducer, roomEcho: roomEcho, expander: expander, warmth: warmth))
+            popReducer: popReducer, roomEcho: roomEcho, voiceGate: expander, warmth: warmth))
     }
 
     private func setMonitoring(_ on: Bool) {

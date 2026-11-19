@@ -75,6 +75,15 @@ enum NoiseStrength: String, CaseIterable, Identifiable {
         case .max: 100
         }
     }
+    /// How far the voice gate turns down sound between words.
+    var gateFloor: Float {
+        switch self {
+        case .light: 0.32      // −10 dB
+        case .balanced: 0.18   // −15 dB
+        case .strong: 0.1      // −20 dB
+        case .max: 0.03        // −30 dB
+        }
+    }
 }
 
 // MARK: - Voice presets
@@ -146,22 +155,27 @@ struct Compressor {
     }
 }
 
-/// Downward expander: gently lowers breaths and leftover background between words.
-struct Expander {
-    var thresholdDB: Float = -55      // well below quiet speech
-    var ratio: Float = 1.5
-    var rangeDB: Float = 8
-    private let attack = coef(ms: 1), release = coef(ms: 250)
-    private let open = coef(ms: 1), close = coef(ms: 200)   // slow close keeps word endings
-    private var envDB: Float = -120
+/// AI voice gate: uses DeepFilterNet's per-frame speech confidence (local SNR) to turn down
+/// everything between words (keyboard clicks, breaths, leftovers) without touching speech.
+/// Measured on a real recording: speech ≈ +33 dB, typing ≈ −8 dB (never above −3 dB).
+struct VoiceGate {
+    var openAboveDB: Float = 3          // speech confidence that opens the gate
+    var holdFrames = 25                 // stay open 250 ms after speech (keeps word endings)
+    var floor: Float = 0.1              // closed level (−20 dB)
+    private var hold = 0
+    private var target: Float = 1
     private var gain: Float = 1
+    private let open = coef(ms: 3), close = coef(ms: 80)
+
+    /// Call once per 10 ms DeepFilterNet frame with the SNR it returned.
+    mutating func update(snrDB: Float) {
+        if snrDB > openAboveDB { hold = holdFrames } else if hold > 0 { hold -= 1 }
+        target = hold > 0 ? 1 : floor
+    }
 
     mutating func process(_ x: Float) -> Float {
-        let lvl = 20 * log10(max(abs(x), 1e-6))
-        follow(&envDB, lvl, attack, release)
-        let below = thresholdDB - envDB
-        let target = below > 0 ? pow(10, -min(below * (ratio - 1), rangeDB) / 20) : 1
-        follow(&gain, target, open, close)
+        let c = target > gain ? open : close
+        gain = c * gain + (1 - c) * target
         return x * gain
     }
 }
