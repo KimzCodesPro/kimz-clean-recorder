@@ -29,8 +29,8 @@ jobs:
             dfn/target
           key: dfn-${{ runner.os }}-${{ hashFiles('dfn/Cargo.lock', 'dfn/src/**') }}
 
-      - name: Build DeepFilterNet (Apple Silicon + Intel)
-        run: ./Scripts/build-dfn.sh --universal
+      - name: Build DeepFilterNet (Apple Silicon)
+        run: ./Scripts/build-dfn.sh
 
       - name: Generate Xcode project
         run: |
@@ -41,7 +41,7 @@ jobs:
         run: |
           xcodebuild -project CleanRecorder.xcodeproj -target CleanRecorder \
             -configuration Release SYMROOT="$PWD/build" \
-            ONLY_ACTIVE_ARCH=NO ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO ARCHS=arm64 \
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual \
             -quiet build
 
