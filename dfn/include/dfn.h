@@ -10,7 +10,8 @@ extern "C" {
 typedef struct Dfn Dfn;
 
 /// Creates the DeepFilterNet3 denoiser (model embedded). NULL on failure.
-Dfn *dfn_create(void);
+/// atten_db: max noise attenuation in dB (e.g. 40). 100 = unlimited.
+Dfn *dfn_create(float atten_db);
 
 /// Samples per dfn_process call (480 = 10 ms at 48 kHz).
 size_t dfn_frame_length(const Dfn *st);

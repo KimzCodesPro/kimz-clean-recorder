@@ -28,6 +28,7 @@ enum Pref {
     static let micGain = "micGain"
     static let micID = "micID"
     static let preset = "voicePreset"
+    static let noiseStrength = "noiseStrength"
     static let popReducer = "popReducer"
     static let roomEcho = "roomEcho"
     static let expander = "expander"
@@ -47,6 +48,7 @@ enum Pref {
             enhance: true,
             micGain: 1.0,
             preset: VoicePreset.natural.rawValue,
+            noiseStrength: NoiseStrength.strong.rawValue,
             popReducer: true,
             roomEcho: false,
             expander: true,
