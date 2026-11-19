@@ -164,7 +164,7 @@ struct VoiceGate {
     var floor: Float = 0.1              // closed level (−20 dB)
     private var hold = 0
     private var target: Float = 1
-    private var gain: Float = 1
+    private(set) var gain: Float = 1
     private let open = coef(ms: 3), close = coef(ms: 80)
 
     /// Call once per 10 ms DeepFilterNet frame with the SNR it returned.

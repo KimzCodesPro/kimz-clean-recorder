@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage(Pref.hideWindow) private var hideWindow = true
     @AppStorage(Pref.saveWav) private var saveWav = false
     @AppStorage(Pref.folder) private var folder = ""
+    @AppStorage(Pref.diagnostics) private var diagnostics = false
 
     var body: some View {
         Form {
@@ -63,6 +64,11 @@ struct SettingsView: View {
                     Button("Choose…", action: chooseFolder)
                 }
                 Toggle("Hide window while recording", isOn: $hideWindow)
+            }
+            Section("Diagnostics") {
+                Toggle("Save raw mic + speech confidence (for troubleshooting)", isOn: $diagnostics)
+                Text("Adds .raw-mic.wav and .speech-confidence.csv next to each recording.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Shortcuts") {
                 LabeledContent("Record / stop", value: "⌃⌘R")

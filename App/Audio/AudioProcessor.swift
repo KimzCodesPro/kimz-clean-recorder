@@ -84,6 +84,9 @@ final class AudioProcessor {
             builtPreset = p.preset
         }
 
+        let writer = sink.get()
+        writer?.appendRaw(Array(input))
+
         anchorIndex = inputCount
         anchorTime = pts
         inputCount += Int64(input.count)
@@ -102,6 +105,7 @@ final class AudioProcessor {
                 // The gate needs the model's speech estimate, so it only runs with noise cancel on.
                 gate.floor = p.noiseStrength.gateFloor
                 gate.update(snrDB: p.noiseCancel && p.voiceGate ? snr : 100)
+                writer?.logFrame(snrDB: snr, gateGain: gate.gain)
                 for y in frameOut { post(y, p) }
                 start += frameLength
             }
