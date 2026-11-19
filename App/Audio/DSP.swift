@@ -268,7 +268,12 @@ struct LoudnessMeter {
     var integratedLUFS: Double? {
         guard subBlocks.count >= 4 else { return nil }
         // 400 ms blocks, 75 % overlap.
-        let blocks = (3..<subBlocks.count).map { (subBlocks[$0 - 3] + subBlocks[$0 - 2] + subBlocks[$0 - 1] + subBlocks[$0]) / 4 }
+        var blocks: [Double] = []
+        blocks.reserveCapacity(subBlocks.count)
+        for i in 3..<subBlocks.count {
+            let sum: Double = subBlocks[i - 3] + subBlocks[i - 2] + subBlocks[i - 1] + subBlocks[i]
+            blocks.append(sum / 4)
+        }
         func lufs(_ p: Double) -> Double { -0.691 + 10 * log10(max(p, 1e-12)) }
         let audible = blocks.filter { lufs($0) > -70 }
         guard !audible.isEmpty else { return nil }
