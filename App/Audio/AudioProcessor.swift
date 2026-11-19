@@ -7,6 +7,7 @@ import CoreMedia
 final class AudioProcessor {
     struct Params: Equatable {
         var noiseCancel = true
+        var noiseStrength = NoiseStrength.strong
         var enhance = true            // EQ + compressor + de-esser (shaped by preset)
         var preset = VoicePreset.natural
         var gain: Float = 1           // linear, 0...2 (0 % ... 200 %)
@@ -28,7 +29,7 @@ final class AudioProcessor {
 
     private let dfn: OpaquePointer?
     private let frameLength: Int
-    private var dfnOn: Bool?
+    private var dfnAtten: Float?
     private var builtPreset: VoicePreset?
 
     private var highPass = Biquad.highPass(80)
@@ -56,7 +57,7 @@ final class AudioProcessor {
     private var peakCount = 0
 
     init() {
-        dfn = dfn_create()
+        dfn = dfn_create(NoiseStrength.strong.db)
         frameLength = dfn.map { Int(dfn_frame_length($0)) } ?? 480
         toDrop = dfn.map { Int(dfn_latency_samples($0)) } ?? 0
         frameOut = [Float](repeating: 0, count: frameLength)
@@ -70,9 +71,10 @@ final class AudioProcessor {
 
     func process(_ input: UnsafeBufferPointer<Float>, pts: CMTime) {
         let p = params.get()
-        if let dfn, dfnOn != p.noiseCancel {
-            dfn_set_attenuation(dfn, p.noiseCancel ? 100 : 0) // 0 = pass-through, same latency
-            dfnOn = p.noiseCancel
+        let atten = p.noiseCancel ? p.noiseStrength.db : 0   // 0 = pass-through, same latency
+        if let dfn, dfnAtten != atten {
+            dfn_set_attenuation(dfn, atten)
+            dfnAtten = atten
         }
         if builtPreset != p.preset {
             let v = p.preset.values

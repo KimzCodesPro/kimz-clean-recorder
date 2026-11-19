@@ -12,10 +12,15 @@ pub struct Dfn {
 }
 
 /// Creates the denoiser with the embedded DeepFilterNet3 model.
+/// `atten_db`: max noise attenuation (e.g. 40). 100 = unlimited.
 /// Returns NULL if the model fails to load.
 #[no_mangle]
-pub extern "C" fn dfn_create() -> *mut Dfn {
-    let rp = RuntimeParams::default_with_ch(1); // atten limit 100 dB = full suppression
+pub extern "C" fn dfn_create(atten_db: c_float) -> *mut Dfn {
+    // Thresholds from DeepFilterNet's own CLI (-15/35/35). The library default (-10/30/20)
+    // replaces any frame under -10 dB local SNR with silence, which clips soft speech.
+    let rp = RuntimeParams::default_with_ch(1)
+        .with_atten_lim(atten_db)
+        .with_thresholds(-15.0, 35.0, 35.0);
     match DfTract::new(DfParams::default(), &rp) {
         Ok(model) => Box::into_raw(Box::new(Dfn { model })),
         Err(_) => std::ptr::null_mut(),
@@ -77,7 +82,7 @@ mod tests {
     #[test]
     fn denoises_white_noise() {
         unsafe {
-            let st = dfn_create();
+            let st = dfn_create(100.0);
             assert!(!st.is_null());
             let n = dfn_frame_length(st);
             assert_eq!(n, 480);
@@ -103,6 +108,34 @@ mod tests {
             let db = 10.0 * (e_out / e_in).log10();
             println!("noise reduction = {:.1} dB", db);
             assert!(db < -10.0);
+            dfn_free(st);
+        }
+    }
+
+    #[test]
+    fn attenuation_limit_keeps_a_noise_floor() {
+        unsafe {
+            let st = dfn_create(30.0);
+            let n = dfn_frame_length(st);
+            let mut seed = 7u32;
+            let mut out = vec![0f32; n];
+            let mut zeros = 0usize;
+            let mut total = 0usize;
+            for frame in 0..100 {
+                let inp: Vec<f32> = (0..n)
+                    .map(|_| {
+                        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                        ((seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5) * 0.05
+                    })
+                    .collect();
+                dfn_process(st, inp.as_ptr(), out.as_mut_ptr());
+                if frame >= 20 {
+                    zeros += out.iter().filter(|x| **x == 0.0).count();
+                    total += n;
+                }
+            }
+            println!("exact zeros with 30 dB limit: {}/{}", zeros, total);
+            assert!(zeros < total / 100);
             dfn_free(st);
         }
     }

@@ -26,6 +26,7 @@ final class Recorder: ObservableObject {
     @Published var noiseCancel: Bool { didSet { pushParams(); save(noiseCancel, Pref.noiseCancel) } }
     @Published var enhance: Bool { didSet { pushParams(); save(enhance, Pref.enhance) } }
     @Published var preset: VoicePreset { didSet { pushParams(); save(preset.rawValue, Pref.preset) } }
+    @Published var noiseStrength: NoiseStrength { didSet { pushParams(); save(noiseStrength.rawValue, Pref.noiseStrength) } }
     @Published var popReducer: Bool { didSet { pushParams(); save(popReducer, Pref.popReducer) } }
     @Published var roomEcho: Bool { didSet { pushParams(); save(roomEcho, Pref.roomEcho) } }
     @Published var expander: Bool { didSet { pushParams(); save(expander, Pref.expander) } }
@@ -61,6 +62,7 @@ final class Recorder: ObservableObject {
         noiseCancel = d.bool(forKey: Pref.noiseCancel)
         enhance = d.bool(forKey: Pref.enhance)
         preset = VoicePreset(rawValue: d.string(forKey: Pref.preset) ?? "") ?? .natural
+        noiseStrength = NoiseStrength(rawValue: d.string(forKey: Pref.noiseStrength) ?? "") ?? .strong
         popReducer = d.bool(forKey: Pref.popReducer)
         roomEcho = d.bool(forKey: Pref.roomEcho)
         expander = d.bool(forKey: Pref.expander)
@@ -252,7 +254,8 @@ final class Recorder: ObservableObject {
 
     private func pushParams() {
         processor.params.set(AudioProcessor.Params(
-            noiseCancel: noiseCancel, enhance: enhance, preset: preset, gain: Float(micGain),
+            noiseCancel: noiseCancel, noiseStrength: noiseStrength,
+            enhance: enhance, preset: preset, gain: Float(micGain),
             popReducer: popReducer, roomEcho: roomEcho, expander: expander, warmth: warmth))
     }
 

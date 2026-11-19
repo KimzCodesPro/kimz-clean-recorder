@@ -28,6 +28,13 @@ struct SettingsView: View {
                 Text("HEVC (.mp4) at native resolution. Higher quality means larger files.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Noise cancel") {
+                Picker("Strength", selection: $rec.noiseStrength) {
+                    ForEach(NoiseStrength.allCases) { Text($0.label).tag($0) }
+                }
+                Text("If words sound cut, use Balanced or Light. Max removes the most noise but can clip soft speech.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Voice") {
                 Picker("Voice style", selection: $rec.preset) {
                     ForEach(VoicePreset.allCases) { Text($0.label).tag($0) }

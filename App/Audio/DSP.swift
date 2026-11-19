@@ -60,6 +60,23 @@ struct Biquad {
     env = c * env + (1 - c) * x
 }
 
+// MARK: - Noise reduction strength
+
+/// Max noise attenuation for DeepFilterNet. Lower = more natural, keeps more soft speech.
+enum NoiseStrength: String, CaseIterable, Identifiable {
+    case light, balanced, strong, max
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+    var db: Float {
+        switch self {
+        case .light: 12
+        case .balanced: 24
+        case .strong: 40
+        case .max: 100
+        }
+    }
+}
+
 // MARK: - Voice presets
 
 enum VoicePreset: String, CaseIterable, Identifiable {
@@ -131,11 +148,11 @@ struct Compressor {
 
 /// Downward expander: gently lowers breaths and leftover background between words.
 struct Expander {
-    var thresholdDB: Float = -45
-    var ratio: Float = 2
-    var rangeDB: Float = 12
-    private let attack = coef(ms: 1), release = coef(ms: 120)
-    private let open = coef(ms: 2), close = coef(ms: 60)
+    var thresholdDB: Float = -55      // well below quiet speech
+    var ratio: Float = 1.5
+    var rangeDB: Float = 8
+    private let attack = coef(ms: 1), release = coef(ms: 250)
+    private let open = coef(ms: 1), close = coef(ms: 200)   // slow close keeps word endings
     private var envDB: Float = -120
     private var gain: Float = 1
 

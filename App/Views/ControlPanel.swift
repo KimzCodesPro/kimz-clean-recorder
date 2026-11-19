@@ -21,6 +21,12 @@ struct ControlPanel: View {
                 Label("Noise cancel", systemImage: "waveform.badge.minus")
             }
             .disabled(!rec.isNoiseModelLoaded)
+            Picker("Strength", selection: $rec.noiseStrength) {
+                ForEach(NoiseStrength.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!rec.noiseCancel)
+            .help("Lower strength keeps more of your voice; higher removes more noise")
             Toggle(isOn: $rec.enhance) {
                 Label("Enhance voice", systemImage: "sparkles")
             }
