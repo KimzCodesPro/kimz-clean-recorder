@@ -43,7 +43,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust
 brew install xcodegen
 
 # 2. Build the noise-cancel library (first time takes ~5–10 min)
-./Scripts/build-dfn.sh            # add --universal to also support Intel Macs
+./Scripts/build-dfn.sh            # Apple Silicon; add --universal to also support Intel Macs
 
 # 3. Generate and open the Xcode project
 xcodegen
