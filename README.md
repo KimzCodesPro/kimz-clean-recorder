@@ -21,6 +21,8 @@ Pick a screen, pick a mic, press Record, and you get a small, sharp `.mp4` with 
 - **Small files:** HEVC hardware encoding by quality target rather than fixed bitrate. Static screens cost almost nothing.
 - **Light / Dark / System theme.**
 - **Menu bar controls and timer.** The window hides while recording, and the app's own windows never appear in the video.
+- **Closing the window quits the app** completely (nothing keeps running). If you quit during a recording, it stops and saves first.
+- **Low energy when idle:** the mic and AI processing run only while the window or menu bar panel is open, while recording, or while monitoring. With the window closed the app idles in the menu bar (no orange mic dot).
 - **Optional clean `.wav`** saved next to the video, for editing.
 
 | Shortcut | Action |

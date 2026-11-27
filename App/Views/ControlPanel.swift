@@ -55,7 +55,13 @@ struct ControlPanel: View {
         .toggleStyle(.switch)
         .padding(18)
         .frame(width: 380)
-        .onAppear { rec.bootstrap() }
+        .onAppear { rec.bootstrap(); rec.surfaceAppeared() }
+        .onDisappear {
+            rec.surfaceDisappeared()
+            // Closing the window quits the app completely. While recording, the window is
+            // only hidden (recording continues from the menu bar), so don't quit then.
+            if rec.state == .idle { NSApp.terminate(nil) }
+        }
     }
 }
 

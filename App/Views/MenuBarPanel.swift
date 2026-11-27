@@ -64,5 +64,7 @@ struct MenuBarPanel: View {
         }
         .padding(14)
         .frame(width: 360)
+        .onAppear { rec.bootstrap(); rec.surfaceAppeared() }
+        .onDisappear { rec.surfaceDisappeared() }
     }
 }

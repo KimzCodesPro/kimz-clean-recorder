@@ -8,6 +8,9 @@ enum RecState { case idle, recording, paused, saving }
 /// The app's single source of truth: screens, mics, audio settings, and the recording lifecycle.
 @MainActor
 final class Recorder: ObservableObject {
+    /// The app's single recorder, for the app delegate's quit handling.
+    static weak var current: Recorder?
+
     // Screens
     @Published private(set) var displays: [DisplayInfo] = []
     @Published var selectedDisplayID: CGDirectDisplayID? = nil
@@ -17,7 +20,7 @@ final class Recorder: ObservableObject {
     @Published var selectedMicID: String? = nil {
         didSet {
             guard selectedMicID != oldValue else { return }
-            mic.select(deviceID: selectedMicID)
+            if micInUse { mic.select(deviceID: selectedMicID) }  // otherwise used on next start
             UserDefaults.standard.set(selectedMicID, forKey: Pref.micID)
         }
     }
@@ -42,7 +45,7 @@ final class Recorder: ObservableObject {
     var isHeadsetMic: Bool { micSampleRate < 32_000 }
     var airRestoreActive: Bool { airMode == .on || (airMode == .auto && isHeadsetMic) }
     /// Hear the processed voice live (use headphones).
-    @Published var monitoring = false { didSet { setMonitoring(monitoring) } }
+    @Published var monitoring = false { didSet { setMonitoring(monitoring); updateMicActivity() } }
     @Published private(set) var level: Float = 0
 
     // Recording
@@ -59,6 +62,11 @@ final class Recorder: ObservableObject {
     private let monitor = Monitor()
     private var writer: MovieWriter?
     private var bootstrapped = false
+    // Energy: the mic and AI processing run only while a window/panel is open, while
+    // recording, or while monitoring. Otherwise the app sits idle in the menu bar.
+    private var micAllowed = false
+    private var visibleSurfaces = 0
+    private var micInUse = false
     private var hiddenWindow: NSWindow?
     private var timerTask: Task<Void, Never>?
     private var startDate = Date()
@@ -67,6 +75,7 @@ final class Recorder: ObservableObject {
 
     init() {
         Pref.registerDefaults()
+        defer { Recorder.current = self }
         let d = UserDefaults.standard
         micGain = d.double(forKey: Pref.micGain)
         noiseCancel = d.bool(forKey: Pref.noiseCancel)
@@ -104,8 +113,9 @@ final class Recorder: ObservableObject {
 
         Task {
             if await AVCaptureDevice.requestAccess(for: .audio) {
+                micAllowed = true
                 refreshMics()
-                mic.select(deviceID: selectedMicID)
+                updateMicActivity()
             } else {
                 errorMessage = "Allow microphone access in System Settings → Privacy & Security → Microphone."
             }
@@ -122,6 +132,31 @@ final class Recorder: ObservableObject {
         }
         Hotkeys.shared.register(id: 2, keyCode: kVK_ANSI_P, modifiers: cmdKey | controlKey) { [weak self] in
             self?.togglePause()
+        }
+    }
+
+    /// Call when the main window or menu bar panel appears / disappears.
+    func surfaceAppeared() {
+        visibleSurfaces += 1
+        updateMicActivity()
+    }
+
+    func surfaceDisappeared() {
+        visibleSurfaces = max(0, visibleSurfaces - 1)
+        updateMicActivity()
+    }
+
+    /// Starts the mic + processing only when something needs it; stops them otherwise,
+    /// so a closed window means ~0% CPU and no orange mic dot.
+    private func updateMicActivity() {
+        let needed = micAllowed && (visibleSurfaces > 0 || state != .idle || monitoring)
+        guard needed != micInUse else { return }
+        micInUse = needed
+        if needed {
+            mic.select(deviceID: selectedMicID)
+        } else {
+            mic.stop()
+            level = 0
         }
     }
 
@@ -174,6 +209,10 @@ final class Recorder: ObservableObject {
     func start() async {
         guard state == .idle, let displayID = selectedDisplayID else { return }
         errorMessage = nil
+        if micAllowed && !micInUse {   // e.g. started with the hotkey while the window is closed
+            micInUse = true
+            mic.select(deviceID: selectedMicID)
+        }
         let d = UserDefaults.standard
         let fps = d.integer(forKey: Pref.fps)
         let quality = VideoQuality(rawValue: d.string(forKey: Pref.quality) ?? "") ?? .high
@@ -218,6 +257,7 @@ final class Recorder: ObservableObject {
             processor.sink.set(nil)
             writer = nil
             errorMessage = error.localizedDescription
+            updateMicActivity()
         }
     }
 
@@ -230,8 +270,11 @@ final class Recorder: ObservableObject {
         processor.sink.set(nil)
         self.writer = nil
 
-        hiddenWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if let win = hiddenWindow {
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            visibleSurfaces = max(visibleSurfaces, 1)
+        }
         hiddenWindow = nil
 
         do {
@@ -251,6 +294,7 @@ final class Recorder: ObservableObject {
             errorMessage = error.localizedDescription
         }
         state = .idle
+        updateMicActivity()
     }
 
     // MARK: - Helpers
