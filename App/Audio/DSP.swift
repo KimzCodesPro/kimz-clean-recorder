@@ -315,6 +315,43 @@ struct Power {
     }
 }
 
+/// Air restore: headset mics like the Jabra Evolve2 65 record only up to 8 kHz, so voices
+/// lose their crispness. This rebuilds the missing 8–11 kHz "air" from the voice's own
+/// 3–7.5 kHz band using level-independent 2nd/3rd harmonics (a harmonic exciter).
+/// Tuned on the owner's voice: restores 8–11 kHz from −36 dB to about −26 dB re 1–4 kHz
+/// (his real full-range voice: −25.9 dB), following the voice (correlation 0.90), not adding hiss.
+struct AirRestore {
+    var amount: Float = 0.65
+    private var bandHP = Biquad.highPass(3_000), bandLP = Biquad.lowPass(7_500)
+    private var outHP1 = Biquad.highPass(8_500), outHP2 = Biquad.highPass(8_500)
+    private var outLP = Biquad.lowPass(11_000)
+    private let attack = coef(ms: 1), release = coef(ms: 30)
+    private var env: Float = 0
+
+    mutating func process(_ x: Float) -> Float {
+        let band = bandLP.process(bandHP.process(x))
+        follow(&env, abs(band), attack, release)
+        let e = env + 1e-6
+        let u = min(max(band / e, -3), 3)
+        let harmonics = e * (u * abs(u) + 0.5 * u * u * u)
+        let air = outLP.process(outHP2.process(outHP1.process(harmonics)))
+        return x + amount * air
+    }
+}
+
+/// When Air restore runs.
+enum AirMode: String, CaseIterable, Identifiable {
+    case auto, on, off
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .auto: "Auto (headset mics)"
+        case .on: "On"
+        case .off: "Off"
+        }
+    }
+}
+
 /// Brick-wall peak limiter (instant attack): output never exceeds the ceiling.
 struct Limiter {
     var ceiling: Float = 0.89        // -1 dBFS

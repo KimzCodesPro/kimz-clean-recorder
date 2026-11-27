@@ -14,6 +14,8 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onSamples: (@Sendable (UnsafeBufferPointer<Float>, CMTime) -> Void)?
     /// Called on the main queue when a mic is plugged in or removed.
     var onDevicesChanged: (() -> Void)?
+    /// Called on the main queue with the selected mic's native sample rate (16 kHz = headset).
+    var onSourceRate: ((Double) -> Void)?
 
     let audioQueue = DispatchQueue(label: "clean-recorder.mic.audio", qos: .userInteractive)
 
@@ -23,6 +25,13 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var input: AVCaptureDeviceInput?
     private var observers: [NSObjectProtocol] = []
     private let hostClock = CMClockGetHostTimeClock()
+
+    // Fallback conversion for mics macOS doesn't deliver as 48 kHz mono Float32.
+    private let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000,
+                                       channels: 1, interleaved: false)!
+    private var converter: AVAudioConverter?
+    private var converterSource: AVAudioFormat?
+    private var reportedRate: Double = 0
 
     static func availableMics() -> [MicInfo] {
         AVCaptureDevice.DiscoverySession(
@@ -94,6 +103,9 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
             currentDeviceID = input?.device.uniqueID
             if !session.isRunning { session.startRunning() }
+            if let rate = input?.device.activeFormat.formatDescription.audioStreamBasicDescription?.mSampleRate {
+                report(rate: rate)
+            }
         }
     }
 
@@ -106,20 +118,62 @@ final class MicCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let asbd = sampleBuffer.formatDescription?.audioStreamBasicDescription,
-              asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0,
-              asbd.mChannelsPerFrame == 1,
-              Int(asbd.mSampleRate) == Int(Self.sampleRate) else { return }
+        guard let fd = sampleBuffer.formatDescription,
+              let asbd = fd.audioStreamBasicDescription else { return }
 
         // Put the timestamp on the same clock ScreenCaptureKit uses.
         let pts = session.synchronizationClock.map {
             CMSyncConvertTime(sampleBuffer.presentationTimeStamp, from: $0, to: hostClock)
         } ?? sampleBuffer.presentationTimeStamp
 
-        try? sampleBuffer.withAudioBufferList { list, _ in
-            guard let buf = list.first, let data = buf.mData else { return }
-            let count = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
-            onSamples?(UnsafeBufferPointer(start: data.assumingMemoryBound(to: Float.self), count: count), pts)
+        let isTarget = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
+            && asbd.mChannelsPerFrame == 1
+            && Int(asbd.mSampleRate) == Int(Self.sampleRate)
+
+        if isTarget {
+            try? sampleBuffer.withAudioBufferList { list, _ in
+                guard let buf = list.first, let data = buf.mData else { return }
+                let count = Int(buf.mDataByteSize) / MemoryLayout<Float>.size
+                onSamples?(UnsafeBufferPointer(start: data.assumingMemoryBound(to: Float.self), count: count), pts)
+            }
+        } else {
+            report(rate: asbd.mSampleRate)
+            convert(sampleBuffer, format: fd, pts: pts)
         }
+    }
+
+    /// Resamples / downmixes any PCM format to 48 kHz mono Float32 (e.g. 16 kHz headset mics).
+    private func convert(_ sb: CMSampleBuffer, format fd: CMFormatDescription, pts: CMTime) {
+        let source = AVAudioFormat(cmAudioFormatDescription: fd)
+        if converterSource != source {
+            converter = AVAudioConverter(from: source, to: target)
+            converter?.downmix = true
+            converterSource = source
+        }
+        let frames = AVAudioFrameCount(sb.numSamples)
+        guard let converter, frames > 0,
+              let input = AVAudioPCMBuffer(pcmFormat: source, frameCapacity: frames) else { return }
+        input.frameLength = frames
+        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(
+                sb, at: 0, frameCount: Int32(frames), into: input.mutableAudioBufferList) == noErr else { return }
+
+        let capacity = AVAudioFrameCount(Double(frames) * Self.sampleRate / source.sampleRate) + 64
+        guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
+        let fed = Locked(false)   // the input block may be @Sendable: no captured `var`
+        var error: NSError?
+        converter.convert(to: out, error: &error) { _, status in
+            if fed.get() { status.pointee = .noDataNow; return nil }
+            fed.set(true)
+            status.pointee = .haveData
+            return input
+        }
+        guard error == nil, out.frameLength > 0, let data = out.floatChannelData?[0] else { return }
+        onSamples?(UnsafeBufferPointer(start: data, count: Int(out.frameLength)), pts)
+    }
+
+    private func report(rate: Double) {
+        guard rate > 0, rate != reportedRate else { return }
+        reportedRate = rate
+        DispatchQueue.main.async { [weak self] in self?.onSourceRate?(rate) }
     }
 }

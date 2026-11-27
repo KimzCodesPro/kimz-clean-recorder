@@ -166,6 +166,14 @@ struct MicControls: View {
                     .buttonStyle(.borderless)
                     .help("Refresh mic list")
             }
+            if rec.isHeadsetMic {
+                Label(rec.airRestoreActive
+                      ? "Headset mic (\(Int(rec.micSampleRate / 1000)) kHz): Air restore on"
+                      : "Headset mic (\(Int(rec.micSampleRate / 1000)) kHz): records up to \(Int(rec.micSampleRate / 2000)) kHz",
+                      systemImage: "headphones")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             HStack(spacing: 8) {
                 Image(systemName: "speaker.fill").foregroundStyle(.secondary)
                 Slider(value: $rec.micGain, in: 0...2, step: 0.05)
