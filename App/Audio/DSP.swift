@@ -115,6 +115,7 @@ enum VoicePreset: String, CaseIterable, Identifiable {
         var warmth: Float       // saturation mix when Warmth is on
         var softShelfDB: Double = 0   // shelf from 5 kHz: tames sharpness
         var sibilanceDipDB: Double = 0 // dip at 6.5 kHz: softer "s" sounds
+        var clarityDB: Double = 0     // peak at 3 kHz: word clarity without "s" harshness
     }
 
     var values: Values {
@@ -122,10 +123,12 @@ enum VoicePreset: String, CaseIterable, Identifiable {
         // Clearly different on purpose: up to ~11 dB apart in the bands people hear most.
         case .natural:   Values(bodyDB: 0, mudDB: -2, presenceDB: 2, airDB: 1, compThreshold: -24, compRatio: 2, compMakeup: 4, warmth: 0.1)
         case .warm:      Values(bodyDB: 5, mudDB: -1, presenceDB: -1, airDB: -4, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.4)
-        // Soft: for bright / close mics (e.g. Jabra Evolve2 65). Tested on the owner's Jabra
-        // recording: loudest "s" sounds 5.8 dB softer, word clarity (2–4 kHz) only −1.2 dB.
-        case .soft:      Values(bodyDB: 4, mudDB: -1.5, presenceDB: 0, airDB: -2, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.3,
-                                softShelfDB: -5, sibilanceDipDB: -3)
+        // Soft: for bright / close mics (e.g. Jabra Evolve2 65). Tames the highs, then wins back
+        // clarity at 3 kHz and trims low-mid mud. On the owner's Jabra recordings vs Warm:
+        // "s" sounds 4.3 dB softer, word clarity +2.4 dB, much less muffled (the first Soft
+        // version was too dark: clear words got lost).
+        case .soft:      Values(bodyDB: 2, mudDB: -3.5, presenceDB: 0, airDB: -2, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.3,
+                                softShelfDB: -5, sibilanceDipDB: -3, clarityDB: 2.5)
         case .bright:    Values(bodyDB: -2, mudDB: -3, presenceDB: 5, airDB: 6, compThreshold: -22, compRatio: 3, compMakeup: 6, warmth: 0.05)
         case .broadcast: Values(bodyDB: 4, mudDB: -5, presenceDB: 5, airDB: 3, compThreshold: -30, compRatio: 5, compMakeup: 10, warmth: 0.3)
         }
@@ -153,7 +156,7 @@ struct VoiceDepth {
 
 /// Voice EQ: body, less mud, more presence and air (plus optional softening).
 struct VoiceEQ {
-    private var body, mud, presence, air, soft, sibilance: Biquad
+    private var body, mud, presence, air, soft, sibilance, clarity: Biquad
     private let softening: Bool
 
     init(_ v: VoicePreset.Values) {
@@ -163,12 +166,13 @@ struct VoiceEQ {
         air = .highShelf(10_000, gainDB: v.airDB)
         soft = .highShelf(5_000, gainDB: v.softShelfDB)
         sibilance = .peaking(6_500, q: 1.5, gainDB: v.sibilanceDipDB)
-        softening = v.softShelfDB != 0 || v.sibilanceDipDB != 0
+        clarity = .peaking(3_000, q: 1.0, gainDB: v.clarityDB)
+        softening = v.softShelfDB != 0 || v.sibilanceDipDB != 0 || v.clarityDB != 0
     }
 
     mutating func process(_ x: Float) -> Float {
         let y = air.process(presence.process(mud.process(body.process(x))))
-        return softening ? sibilance.process(soft.process(y)) : y
+        return softening ? clarity.process(sibilance.process(soft.process(y))) : y
     }
 }
 
