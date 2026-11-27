@@ -100,7 +100,7 @@ enum NoiseStrength: String, CaseIterable, Identifiable {
 // MARK: - Voice presets
 
 enum VoicePreset: String, CaseIterable, Identifiable {
-    case natural, warm, bright, broadcast
+    case natural, warm, soft, bright, broadcast
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
 
@@ -113,6 +113,8 @@ enum VoicePreset: String, CaseIterable, Identifiable {
         var compRatio: Float
         var compMakeup: Float
         var warmth: Float       // saturation mix when Warmth is on
+        var softShelfDB: Double = 0   // shelf from 5 kHz: tames sharpness
+        var sibilanceDipDB: Double = 0 // dip at 6.5 kHz: softer "s" sounds
     }
 
     var values: Values {
@@ -120,6 +122,10 @@ enum VoicePreset: String, CaseIterable, Identifiable {
         // Clearly different on purpose: up to ~11 dB apart in the bands people hear most.
         case .natural:   Values(bodyDB: 0, mudDB: -2, presenceDB: 2, airDB: 1, compThreshold: -24, compRatio: 2, compMakeup: 4, warmth: 0.1)
         case .warm:      Values(bodyDB: 5, mudDB: -1, presenceDB: -1, airDB: -4, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.4)
+        // Soft: for bright / close mics (e.g. Jabra Evolve2 65). Tested on the owner's Jabra
+        // recording: loudest "s" sounds 5.8 dB softer, word clarity (2–4 kHz) only −1.2 dB.
+        case .soft:      Values(bodyDB: 4, mudDB: -1.5, presenceDB: 0, airDB: -2, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.3,
+                                softShelfDB: -5, sibilanceDipDB: -3)
         case .bright:    Values(bodyDB: -2, mudDB: -3, presenceDB: 5, airDB: 6, compThreshold: -22, compRatio: 3, compMakeup: 6, warmth: 0.05)
         case .broadcast: Values(bodyDB: 4, mudDB: -5, presenceDB: 5, airDB: 3, compThreshold: -30, compRatio: 5, compMakeup: 10, warmth: 0.3)
         }
@@ -145,19 +151,24 @@ struct VoiceDepth {
     }
 }
 
-/// Voice EQ: body, less mud, more presence and air.
+/// Voice EQ: body, less mud, more presence and air (plus optional softening).
 struct VoiceEQ {
-    private var body, mud, presence, air: Biquad
+    private var body, mud, presence, air, soft, sibilance: Biquad
+    private let softening: Bool
 
     init(_ v: VoicePreset.Values) {
         body = .peaking(140, q: 0.8, gainDB: v.bodyDB)
         mud = .peaking(250, q: 1.0, gainDB: v.mudDB)
         presence = .peaking(4_000, q: 0.9, gainDB: v.presenceDB)
         air = .highShelf(10_000, gainDB: v.airDB)
+        soft = .highShelf(5_000, gainDB: v.softShelfDB)
+        sibilance = .peaking(6_500, q: 1.5, gainDB: v.sibilanceDipDB)
+        softening = v.softShelfDB != 0 || v.sibilanceDipDB != 0
     }
 
     mutating func process(_ x: Float) -> Float {
-        air.process(presence.process(mud.process(body.process(x))))
+        let y = air.process(presence.process(mud.process(body.process(x))))
+        return softening ? sibilance.process(soft.process(y)) : y
     }
 }
 
@@ -211,20 +222,25 @@ struct VoiceGate {
     }
 }
 
-/// Split-band de-esser: turns down only the >6 kHz band when "s" sounds spike.
+/// Split-band de-esser: turns down only the >4.5 kHz band when "s" sounds dominate.
+/// Relative: compares the high band with the whole voice, so it works at any mic level
+/// (the old fixed threshold missed close mics like headsets). Up to −12 dB.
 struct DeEsser {
-    var threshold: Float = 0.06
-    var minGain: Float = 0.4         // at most ~ -8 dB
-    private var hp = Biquad.highPass(6_000)
-    private let attack = coef(ms: 1), release = coef(ms: 60)
-    private var env: Float = 0
+    var ratioThreshold: Float = 0.30   // high band / full signal
+    var minGain: Float = 0.25          // at most −12 dB
+    private var hp = Biquad.highPass(4_500)
+    private let attack = coef(ms: 0.5), release = coef(ms: 50), smooth = coef(ms: 2)
+    private var envHigh: Float = 0, envFull: Float = 0, gain: Float = 1
 
     mutating func process(_ x: Float) -> Float {
         let high = hp.process(x)
         let low = x - high
-        follow(&env, abs(high), attack, release)
-        let g = env > threshold ? max(threshold / env, minGain) : 1
-        return low + high * g
+        follow(&envHigh, abs(high), attack, release)
+        follow(&envFull, abs(x), attack, release)
+        let r = envHigh / (envFull + 1e-6)
+        let target = r > ratioThreshold ? max(pow(ratioThreshold / r, 1.5), minGain) : 1
+        gain = smooth * gain + (1 - smooth) * target
+        return low + high * gain
     }
 }
 
