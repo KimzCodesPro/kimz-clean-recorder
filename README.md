@@ -10,7 +10,8 @@ Pick a screen, pick a mic, press Record, and you get a small, sharp `.mp4` with 
 - **Mic volume slider** from 0–200%, also adjustable while recording. Double-click the % to reset it to 100%.
 - **Noise cancel** with DeepFilterNet3 (on-device AI, model embedded in the app).
 - **Enhance voice:** EQ, compressor and de-esser, shaped by a **voice style** (Natural, Warm, Bright, Broadcast).
-- **Depth slider:** deeper voice and stronger bass (low-shelf boost below ~160 Hz), adjustable while recording.
+- **Depth slider:** bass boost, deeper voice and stronger bass (low-shelf boost below ~160 Hz), adjustable while recording.
+- **Power slider:** an "amplified", radio-style voice: fast compression plus saturation, so it sounds bigger at the same loudness.
 - **Extra voice tools** (in Settings): pop reducer, AI silence & keyboard cleanup (voice gate driven by the model's speech detection), light room echo reduction, warmth.
 - **Loudness normalization** after recording, to −14 LUFS (YouTube) or −16 LUFS (podcast). The video is copied untouched.
 - **Hear yourself:** live headphone monitoring of the processed voice.
@@ -66,7 +67,7 @@ Mic (AVCaptureSession, 48 kHz mono)
   → mic gain (0–200 %)
   → voice gate (AI speech detection)
   → pop reducer → room echo reduction → depth (bass)
-  → EQ → compressor → de-esser   "Enhance voice" (voice style)
+  → EQ → compressor → power → de-esser   "Enhance voice" (voice style)
   → warmth → limiter (-1 dBFS)    → headphones (optional)
   ┐
   ├→ AVAssetWriter → .mp4 (HEVC video + AAC 192 kbps) [+ .wav]
