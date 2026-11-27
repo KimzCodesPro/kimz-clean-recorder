@@ -9,7 +9,7 @@ Pick a screen, pick a mic, press Record, and you get a small, sharp `.mp4` with 
 - **Mic picker.** Lists every connected mic. USB mics are picked up when you plug them in, and you can **switch mics while recording**. If the active mic is unplugged, it falls back to the system default.
 - **Mic volume slider** from 0–200%, also adjustable while recording. Double-click the % to reset it to 100%.
 - **Noise cancel** with DeepFilterNet3 (on-device AI, model embedded in the app).
-- **Enhance voice:** EQ, compressor and de-esser, shaped by a **voice style** (Natural, Warm, Bright, Broadcast).
+- **Enhance voice:** EQ, compressor and de-esser, shaped by a **voice style** (Natural, Warm, Soft, Bright, Broadcast). **Soft** tames sharp "s" sounds from bright or close mics like headsets.
 - **Depth slider:** bass boost, deeper voice and stronger bass (low-shelf boost below ~160 Hz), adjustable while recording.
 - **Air restore** (Auto for headset mics): rebuilds the 8–11 kHz crispness that call-quality mics like the Jabra Evolve2 65 don't record. Any mic format is converted to 48 kHz automatically.
 - **Power slider:** an "amplified", radio-style voice: fast compression plus saturation, so it sounds bigger at the same loudness.
