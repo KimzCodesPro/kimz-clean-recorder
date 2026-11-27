@@ -38,6 +38,7 @@ enum Pref {
     static let diagnostics = "saveDiagnostics"
     static let depth = "voiceDepth"
     static let power = "voicePower"
+    static let airMode = "airRestoreMode"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -60,6 +61,7 @@ enum Pref {
             loudnessTarget: -14.0,
             depth: 0.4,
             power: 0.3,
+            airMode: AirMode.auto.rawValue,
         ])
     }
 

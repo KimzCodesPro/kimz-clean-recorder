@@ -44,6 +44,11 @@ struct SettingsView: View {
                 Toggle("Silence & keyboard cleanup (AI)", isOn: $rec.expander)
                 Toggle("Room echo reduction", isOn: $rec.roomEcho)
                 Toggle("Warmth", isOn: $rec.warmth)
+                Picker("Air restore", selection: $rec.airMode) {
+                    ForEach(AirMode.allCases) { Text($0.label).tag($0) }
+                }
+                Text("Headset mics (like Jabra) record only up to 8 kHz. Air restore rebuilds the missing crispness. Auto turns it on only for those mics.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Room echo reduction is light. Best for small echoes. Treating the room works better for big ones.")
                     .font(.caption).foregroundStyle(.secondary)
             }

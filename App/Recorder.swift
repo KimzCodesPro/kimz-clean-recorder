@@ -35,6 +35,12 @@ final class Recorder: ObservableObject {
     @Published var depth: Double { didSet { pushParams(); save(depth, Pref.depth) } }
     /// 0 ... 1: bigger, "amplified" voice (density + saturation).
     @Published var power: Double { didSet { pushParams(); save(power, Pref.power) } }
+    @Published var airMode: AirMode { didSet { pushParams(); save(airMode.rawValue, Pref.airMode) } }
+    /// Native sample rate of the selected mic (16 kHz for headsets like the Jabra Evolve2 65).
+    @Published private(set) var micSampleRate: Double = 48_000 { didSet { pushParams() } }
+    /// Mic records only up to ~8–12 kHz (headset / Bluetooth / call-quality mic).
+    var isHeadsetMic: Bool { micSampleRate < 32_000 }
+    var airRestoreActive: Bool { airMode == .on || (airMode == .auto && isHeadsetMic) }
     /// Hear the processed voice live (use headphones).
     @Published var monitoring = false { didSet { setMonitoring(monitoring) } }
     @Published private(set) var level: Float = 0
@@ -73,6 +79,7 @@ final class Recorder: ObservableObject {
         warmth = d.bool(forKey: Pref.warmth)
         depth = d.double(forKey: Pref.depth)
         power = d.double(forKey: Pref.power)
+        airMode = AirMode(rawValue: d.string(forKey: Pref.airMode) ?? "") ?? .auto
         selectedMicID = d.string(forKey: Pref.micID)
         pushParams()
     }
@@ -87,6 +94,7 @@ final class Recorder: ObservableObject {
         mic.onSamples = { [processor] buf, pts in processor.process(buf, pts: pts) }
         processor.onLevel = { [weak self] v in Task { @MainActor in self?.level = v } }
         mic.onDevicesChanged = { [weak self] in self?.refreshMics() }
+        mic.onSourceRate = { [weak self] rate in self?.micSampleRate = rate }
         screen.onError = { [weak self] err in
             Task { @MainActor in
                 self?.errorMessage = "Screen capture stopped: \(err.localizedDescription)"
@@ -264,7 +272,7 @@ final class Recorder: ObservableObject {
             noiseCancel: noiseCancel, noiseStrength: noiseStrength,
             enhance: enhance, preset: preset, gain: Float(micGain),
             popReducer: popReducer, roomEcho: roomEcho, voiceGate: expander, warmth: warmth,
-            depth: Float(depth), power: Float(power)))
+            depth: Float(depth), power: Float(power), airRestore: airRestoreActive))
     }
 
     private func setMonitoring(_ on: Bool) {
