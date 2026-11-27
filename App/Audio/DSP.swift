@@ -39,6 +39,17 @@ struct Biquad {
         return Biquad(1 + alpha * a, -2 * c, 1 - alpha * a, 1 + alpha / a, -2 * c, 1 - alpha / a)
     }
 
+    static func lowShelf(_ f: Double, gainDB: Double, sr: Double = 48_000) -> Biquad {
+        let a = pow(10, gainDB / 40), w = 2 * .pi * f / sr, c = cos(w)
+        let alpha = sin(w) / 2 * sqrt(2.0), sa = 2 * sqrt(a) * alpha
+        return Biquad(a * ((a + 1) - (a - 1) * c + sa),
+                      2 * a * ((a - 1) - (a + 1) * c),
+                      a * ((a + 1) - (a - 1) * c - sa),
+                      (a + 1) + (a - 1) * c + sa,
+                      -2 * ((a - 1) + (a + 1) * c),
+                      (a + 1) + (a - 1) * c - sa)
+    }
+
     static func highShelf(_ f: Double, gainDB: Double, sr: Double = 48_000) -> Biquad {
         let a = pow(10, gainDB / 40), w = 2 * .pi * f / sr, c = cos(w)
         let alpha = sin(w) / 2 * sqrt(2.0), sa = 2 * sqrt(a) * alpha
@@ -111,6 +122,25 @@ enum VoicePreset: String, CaseIterable, Identifiable {
         case .bright:    Values(bodyDB: 0, mudDB: -3, presenceDB: 4, airDB: 3, compThreshold: -22, compRatio: 3, compMakeup: 6, warmth: 0.1)
         case .broadcast: Values(bodyDB: 2.5, mudDB: -4, presenceDB: 4, airDB: 2, compThreshold: -26, compRatio: 4, compMakeup: 8, warmth: 0.25)
         }
+    }
+}
+
+/// Depth: a deeper, fuller voice. Boosts the chest/body range (below ~160 Hz, where a male
+/// voice's fundamental sits) and adds a little low-mid weight, up to +9 dB at 100 %.
+struct VoiceDepth {
+    private var shelf: Biquad
+    private var weight: Biquad
+    let amount: Float
+
+    init(amount: Float) {
+        self.amount = amount
+        let a = Double(min(max(amount, 0), 1))
+        shelf = .lowShelf(160, gainDB: 9 * a)
+        weight = .peaking(220, q: 1.2, gainDB: 2 * a)
+    }
+
+    mutating func process(_ x: Float) -> Float {
+        weight.process(shelf.process(x))
     }
 }
 

@@ -45,6 +45,8 @@ struct MenuBarPanel: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
+            DepthSlider()
+                .controlSize(.small)
             Toggle("Hear yourself", isOn: $rec.monitoring)
                 .toggleStyle(.switch)
                 .controlSize(.small)

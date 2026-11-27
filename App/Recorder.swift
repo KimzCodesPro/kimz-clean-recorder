@@ -31,6 +31,8 @@ final class Recorder: ObservableObject {
     @Published var roomEcho: Bool { didSet { pushParams(); save(roomEcho, Pref.roomEcho) } }
     @Published var expander: Bool { didSet { pushParams(); save(expander, Pref.expander) } }
     @Published var warmth: Bool { didSet { pushParams(); save(warmth, Pref.warmth) } }
+    /// 0 ... 1: deeper voice / stronger bass.
+    @Published var depth: Double { didSet { pushParams(); save(depth, Pref.depth) } }
     /// Hear the processed voice live (use headphones).
     @Published var monitoring = false { didSet { setMonitoring(monitoring) } }
     @Published private(set) var level: Float = 0
@@ -67,6 +69,7 @@ final class Recorder: ObservableObject {
         roomEcho = d.bool(forKey: Pref.roomEcho)
         expander = d.bool(forKey: Pref.expander)
         warmth = d.bool(forKey: Pref.warmth)
+        depth = d.double(forKey: Pref.depth)
         selectedMicID = d.string(forKey: Pref.micID)
         pushParams()
     }
@@ -257,7 +260,8 @@ final class Recorder: ObservableObject {
         processor.params.set(AudioProcessor.Params(
             noiseCancel: noiseCancel, noiseStrength: noiseStrength,
             enhance: enhance, preset: preset, gain: Float(micGain),
-            popReducer: popReducer, roomEcho: roomEcho, voiceGate: expander, warmth: warmth))
+            popReducer: popReducer, roomEcho: roomEcho, voiceGate: expander, warmth: warmth,
+            depth: Float(depth)))
     }
 
     private func setMonitoring(_ on: Bool) {
