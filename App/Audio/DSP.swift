@@ -117,10 +117,11 @@ enum VoicePreset: String, CaseIterable, Identifiable {
 
     var values: Values {
         switch self {
-        case .natural:   Values(bodyDB: 0, mudDB: -2, presenceDB: 2, airDB: 1, compThreshold: -24, compRatio: 2, compMakeup: 4, warmth: 0.15)
-        case .warm:      Values(bodyDB: 2, mudDB: -1.5, presenceDB: 1, airDB: 0, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.35)
-        case .bright:    Values(bodyDB: 0, mudDB: -3, presenceDB: 4, airDB: 3, compThreshold: -22, compRatio: 3, compMakeup: 6, warmth: 0.1)
-        case .broadcast: Values(bodyDB: 2.5, mudDB: -4, presenceDB: 4, airDB: 2, compThreshold: -26, compRatio: 4, compMakeup: 8, warmth: 0.25)
+        // Clearly different on purpose: up to ~11 dB apart in the bands people hear most.
+        case .natural:   Values(bodyDB: 0, mudDB: -2, presenceDB: 2, airDB: 1, compThreshold: -24, compRatio: 2, compMakeup: 4, warmth: 0.1)
+        case .warm:      Values(bodyDB: 5, mudDB: -1, presenceDB: -1, airDB: -4, compThreshold: -24, compRatio: 2.5, compMakeup: 5, warmth: 0.4)
+        case .bright:    Values(bodyDB: -2, mudDB: -3, presenceDB: 5, airDB: 6, compThreshold: -22, compRatio: 3, compMakeup: 6, warmth: 0.05)
+        case .broadcast: Values(bodyDB: 4, mudDB: -5, presenceDB: 5, airDB: 3, compThreshold: -30, compRatio: 5, compMakeup: 10, warmth: 0.3)
         }
     }
 }
@@ -282,6 +283,35 @@ struct Warmth {
 
     @inline(__always) func process(_ x: Float) -> Float {
         x + amount * (tanh(drive * x) / drive - x)
+    }
+}
+
+/// Power: an "amplified" voice. A fast second compressor brings the quiet parts of each word
+/// up toward the loud parts, plus gentle saturation for density, so the voice sounds bigger and
+/// louder at the same final loudness (YouTube normalizes everything to about -14 LUFS anyway).
+struct Power {
+    let amount: Float
+    private let threshold: Float, ratio: Float, makeup: Float, drive: Float, mix: Float
+    private let attack = coef(ms: 2), release = coef(ms: 60)
+    private var envDB: Float = -120
+
+    init(amount: Float) {
+        let a = min(max(amount, 0), 1)
+        self.amount = a
+        threshold = -18 - 12 * a     // -18 ... -30 dBFS
+        ratio = 1 + 5 * a            // 1:1 ... 6:1
+        makeup = 7 * a               // 0 ... +7 dB
+        drive = 1 + 3 * a
+        mix = 0.5 * a
+    }
+
+    mutating func process(_ x: Float) -> Float {
+        let lvl = 20 * log10(max(abs(x), 1e-6))
+        follow(&envDB, lvl, attack, release)
+        let over = envDB - threshold
+        let gainDB = (over > 0 ? -over * (1 - 1 / ratio) : 0) + makeup
+        let y = x * pow(10, gainDB / 20)
+        return y + mix * (tanh(drive * y) / drive - y)
     }
 }
 

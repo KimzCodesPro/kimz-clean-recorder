@@ -118,14 +118,31 @@ struct DepthSlider: View {
     @EnvironmentObject private var rec: Recorder
 
     var body: some View {
+        VStack(spacing: 8) {
+            PercentSlider(title: "Depth", icon: "waveform.path", value: $rec.depth,
+                          help: "Bass boost: deeper voice, stronger bass. 0% = off.")
+            PercentSlider(title: "Power", icon: "speaker.wave.3", value: $rec.power,
+                          help: "Amplified voice: denser and bigger, like radio. Needs Enhance voice on.")
+                .disabled(!rec.enhance)
+        }
+    }
+}
+
+private struct PercentSlider: View {
+    let title: String
+    let icon: String
+    @Binding var value: Double
+    let help: String
+
+    var body: some View {
         HStack(spacing: 8) {
-            Label("Depth", systemImage: "waveform.path")
-            Slider(value: $rec.depth, in: 0...1, step: 0.05)
-            Text("\(Int((rec.depth * 100).rounded()))%")
+            Label(title, systemImage: icon).frame(width: 84, alignment: .leading)
+            Slider(value: $value, in: 0...1, step: 0.05)
+            Text("\(Int((value * 100).rounded()))%")
                 .font(.system(.caption, design: .monospaced))
                 .frame(width: 42, alignment: .trailing)
         }
-        .help("Deeper voice and stronger bass. 0% = off. Around 40–60% suits most voices.")
+        .help(help)
     }
 }
 
