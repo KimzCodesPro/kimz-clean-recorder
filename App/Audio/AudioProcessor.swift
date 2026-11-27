@@ -2,7 +2,7 @@ import CoreMedia
 
 /// Mic chain:
 /// high-pass → DeepFilterNet → voice gate → mic gain → pop reducer → room echo
-/// → EQ → compressor → de-esser → warmth → limiter
+/// → depth (bass) → EQ → compressor → de-esser → warmth → limiter
 /// Runs on the mic's audio queue. Output timestamps are corrected for DeepFilterNet's delay.
 final class AudioProcessor {
     struct Params: Equatable {
@@ -15,6 +15,7 @@ final class AudioProcessor {
         var roomEcho = false
         var voiceGate = true          // AI silence & keyboard cleanup
         var warmth = false
+        var depth: Float = 0          // 0...1, deeper / stronger bass
     }
 
     let params = Locked(Params())
@@ -40,6 +41,7 @@ final class AudioProcessor {
     private var compressor = Compressor(VoicePreset.natural.values)
     private var deEsser = DeEsser()
     private var warmth = Warmth()
+    private var depth = VoiceDepth(amount: 0)
     private var limiter = Limiter()
 
     private var pending: [Float] = []         // high-passed input waiting for a full DFN frame
@@ -87,6 +89,8 @@ final class AudioProcessor {
         let writer = sink.get()
         writer?.appendRaw(Array(input))
 
+        if depth.amount != p.depth { depth = VoiceDepth(amount: p.depth) }
+
         anchorIndex = inputCount
         anchorTime = pts
         inputCount += Int64(input.count)
@@ -131,6 +135,7 @@ final class AudioProcessor {
         var s = gate.process(y) * p.gain
         if p.popReducer { s = plosive.process(s) }
         if p.roomEcho { s = roomEcho.process(s) }
+        if p.depth > 0 { s = depth.process(s) }
         if p.enhance {
             s = eq.process(s)
             s = compressor.process(s)

@@ -36,6 +36,7 @@ enum Pref {
     static let normalize = "normalizeLoudness"
     static let loudnessTarget = "loudnessTarget"
     static let diagnostics = "saveDiagnostics"
+    static let depth = "voiceDepth"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -56,6 +57,7 @@ enum Pref {
             warmth: false,
             normalize: true,
             loudnessTarget: -14.0,
+            depth: 0.4,
         ])
     }
 

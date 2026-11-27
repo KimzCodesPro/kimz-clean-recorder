@@ -35,6 +35,7 @@ struct ControlPanel: View {
             }
             .pickerStyle(.segmented)
             .disabled(!rec.enhance)
+            DepthSlider()
             Toggle(isOn: $rec.monitoring) {
                 Label("Hear yourself (use headphones)", systemImage: "headphones")
             }
@@ -108,6 +109,23 @@ private struct DisplayCard: View {
                               lineWidth: selected ? 2 : 0.5)
         )
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Depth (works while recording)
+
+struct DepthSlider: View {
+    @EnvironmentObject private var rec: Recorder
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label("Depth", systemImage: "waveform.path")
+            Slider(value: $rec.depth, in: 0...1, step: 0.05)
+            Text("\(Int((rec.depth * 100).rounded()))%")
+                .font(.system(.caption, design: .monospaced))
+                .frame(width: 42, alignment: .trailing)
+        }
+        .help("Deeper voice and stronger bass. 0% = off. Around 40–60% suits most voices.")
     }
 }
 
